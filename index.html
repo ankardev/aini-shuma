@@ -1233,7 +1233,7 @@ async function createGist(token) {
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
-      description: '艾尼数码 - 数据同步（请勿删除此 Gist）',
+      description: GIST_DESC,
       public: false,
       files: { 'aini_digital_data.json': { content: JSON.stringify(syncData) } }
     })
@@ -1250,6 +1250,17 @@ function getDefaults() {
   };
 }
 
+const GIST_DESC = '艾尼数码 - 数据同步（请勿删除此 Gist）';
+
+async function findExistingGist(token) {
+  const resp = await ghFetch('https://api.github.com/gists?per_page=100', {
+    headers: { 'Authorization': 'token ' + token, 'Accept': 'application/vnd.github.v3+json' }
+  });
+  if (!resp.ok) return null;
+  const gists = await resp.json();
+  return gists.find(g => g.description === GIST_DESC) || null;
+}
+
 // Settings UI functions
 async function connectCloud() {
   const token = document.getElementById('cloudToken').value.trim();
@@ -1258,11 +1269,20 @@ async function connectCloud() {
   showToast('🔗 正在连接...');
   try {
     if (!gistId) {
-      updateCloudStatus('🟢 正在创建 Gist...');
-      const gist = await createGist(token);
-      gistId = gist.id;
-      document.getElementById('cloudGistId').value = gistId;
-      showToast('✅ Gist 已自动创建');
+      // 先查找已有的 Gist（避免重复创建）
+      updateCloudStatus('🟢 正在查找已有数据...');
+      const existing = await findExistingGist(token);
+      if (existing) {
+        gistId = existing.id;
+        document.getElementById('cloudGistId').value = gistId;
+        showToast('✅ 已找到之前的云端数据');
+      } else {
+        updateCloudStatus('🟢 正在创建 Gist...');
+        const gist = await createGist(token);
+        gistId = gist.id;
+        document.getElementById('cloudGistId').value = gistId;
+        showToast('✅ Gist 已自动创建');
+      }
     }
     saveCloudConfig({ token, gistId });
     cloudConnected = true;
